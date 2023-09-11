@@ -11,7 +11,7 @@ const _EXTENSION = :extension
 const _DEFAULT_NRANDOM = 4
 
 """
-Almost just a wrapper to `DataFrame`
+Almost just a wrapper to `DataFrame`. Could be declared as <: AbstractDataFrame
 """
 struct ParametricFilename
     df::DataFrame
@@ -98,7 +98,8 @@ function new_filename(pf::ParametricFilename, t)
 end
 
 """
-Return a filename corresponding to the input parameter values. If the filename does not
+Return a filename corresponding to the input parameter values, and a boolean indicating
+if this value was preexistent to the function call. If the filename does not
 exist yet, it is created (and added to the database).
 `t` is a `NamedTuple` of a `Dict`
 """
@@ -107,9 +108,9 @@ function get_filename(pf::ParametricFilename, t)
     _df = subset(get_dataframe(pf), query)
     if nrow(_df) > 0
         id = _df[1, _IDENTIFIER]
-        return _build_filename(pf, id)
+        return _build_filename(pf, id), false
     else
-        return new_filename(pf, t)
+        return new_filename(pf, t), true
     end
 end
 
