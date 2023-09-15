@@ -10,6 +10,7 @@ const _EXTENSION = "extension"
 const _DEFAULT_NRANDOM = 4
 const _NRANDOM = "nrandom"
 const _WRITE_PATH = "write_path"
+const _CURRENT_FILE_VERSION = 1
 
 _get_nrandom(df::DataFrame) = metadata(df, _NRANDOM)
 _get_prefix(df::DataFrame) = metadata(df, _PREFIX)
@@ -19,7 +20,7 @@ _get_write_path(df::DataFrame) = metadata(df, _WRITE_PATH)
 """
 `colnames` and `coltypes` must be provided as iterables (`Tuple`, `Vector`, ...) of `Symbol`.
 """
-function ParametricFilename(
+function create(
     colnames,
     coltypes;
     prefix = "",
@@ -116,16 +117,49 @@ end
 """
 new_parameter!(df::DataFrame, name, value) = insertcols!(df, name => value)
 
+function _read_commented_line(line)
+    _line = replace(line, "#" => "", count = 1)
+    @show _line
+    key, value = split(_line, "=")
+    return strip(key), strip(value)
+end
+
 function read(path; autowrite = false)
-    df = CSV.read(path, DataFrame)
-    wpath = autowrite ? path : ""
-    metadata!(df, _WRITE_PATH, wpath)
-    return df
+    return open(path) do io
+        line = readline(io)
+        key, value = _read_commented_line(line)
+        @assert key == "version" "first line must be '# version = <Int>'"
+        version = parse(Int, value)
+        if version == _CURRENT_FILE_VERSION
+            line = readline(io)
+            key, value = _read_commented_line(line)
+            nrandom = parse(Int, value)
+            line = readline(io)
+            key, value = _read_commented_line(line)
+            prefix = value
+            line = readline(io)
+            key, value = _read_commented_line(line)
+            extension = value
+        end
+        df = CSV.read(io, DataFrame)
+        metadata!(df, _PREFIX, prefix, style = :note)
+        metadata!(df, _EXTENSION, extension, style = :note)
+        metadata!(df, _NRANDOM, nrandom, style = :note)
+        write_path = autowrite ? write_path : ""
+        metadata!(df, _WRITE_PATH, write_path, style = :note)
+        df
+    end
 end
 
 function write(df::DataFrame, path = "")
     _wpath = length(path) > 0 ? path : _get_write_path(df)
-    CSV.write(_wpath, df)
+    open(_wpath, "w") do io
+        println(io, "# version = $(_CURRENT_FILE_VERSION)")
+        println(io, "# nrandom = $(_get_nrandom(df))")
+        println(io, "# prefix = $(_get_prefix(df))")
+        println(io, "# extension = $(_get_extension(df))")
+        CSV.write(io, df; append = true)
+    end
 end
 
 macro only_if_new(df, filename, f)
