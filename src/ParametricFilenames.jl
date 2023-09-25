@@ -119,7 +119,6 @@ new_parameter!(df::DataFrame, name, value) = insertcols!(df, name => value)
 
 function _read_commented_line(line)
     _line = replace(line, "#" => "", count = 1)
-    @show _line
     key, value = split(_line, "=")
     return strip(key), strip(value)
 end
