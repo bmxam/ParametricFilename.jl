@@ -193,6 +193,41 @@ function write(df::DataFrame, path = "")
     end
 end
 
+function remove_orphans(dir, pf; prefix = "", suffix = "", usr_confirm = true)
+    """
+    Helps cleaning a directory with files that are not registered in the database anymore.
+
+    If `usr_confirm` is `true`, the list of files will be displayed and a confirmation will be prompted.
+    Otherwise the files are automatically deleted.
+    """
+    n_random = _get_nrandom(pf)
+
+    regex = "$prefix(\\w{$(n_random)})$suffix"
+    @show regex
+    regex = Regex(regex)
+
+    ids = pf[!, :identifier]
+    files = []
+    for f in readdir(dir)
+        m = match(regex, f)
+        if m !== nothing
+            id = match(regex, f).captures[1]
+            (id ∈ ids) || push!(files, joinpath(dir, f))
+        end
+    end
+
+    (length(files) > 0) || return
+
+    confirmed = true
+    if usr_confirm
+        foreach(println, files)
+        @warn "You are about to delete the above files. Do you really want to delete all this files? (y/n)"
+        confirmed = readline() == "y"
+    end
+
+    confirmed && foreach(f -> rm(f; recursive = true), files)
+end
+
 macro only_if_new(df, filename, f)
     error("In construction")
     _filename = esc(filename)
