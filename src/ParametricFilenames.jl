@@ -105,9 +105,9 @@ function get_filename(df::DataFrame, t)
     _df = subset(df, query)
     if nrow(_df) > 0
         id = _df[1, _IDENTIFIER]
-        return _build_filename(df, id), false
+        return _build_filename(df, id), true
     else
-        return new_filename(df, t), true
+        return new_filename(df, t), false
     end
 end
 
@@ -123,8 +123,8 @@ function _read_commented_line(line)
     return strip(key), strip(value)
 end
 
-function read(path; autowrite = false)
-    return open(path) do io
+function read(path; autowrite = false, detect_cplx = false)
+    df = open(path) do io
         line = readline(io)
         key, value = _read_commented_line(line)
         @assert key == "version" "first line must be '# version = <Int>'"
@@ -139,15 +139,40 @@ function read(path; autowrite = false)
             line = readline(io)
             key, value = _read_commented_line(line)
             extension = value
+            # key, value = _read_commented_line(line)
+            # types = value
+
         end
         df = CSV.read(io, DataFrame)
         metadata!(df, _PREFIX, prefix, style = :note)
         metadata!(df, _EXTENSION, extension, style = :note)
         metadata!(df, _NRANDOM, nrandom, style = :note)
-        write_path = autowrite ? write_path : ""
+        write_path = autowrite ? path : ""
         metadata!(df, _WRITE_PATH, write_path, style = :note)
         df
     end
+
+    if detect_cplx
+        types = eltype.(eachcol(df))
+        for (name, type) in zip(names(df), types)
+            (type <: Number) && continue
+            val = df[1, name]
+
+            # Check if value contains "im"
+            occursin("im", val) || continue
+            try
+                parse(ComplexF64, val) #if error, we get kicked out of the try block
+
+                # Convert col to F64
+                @warn "Column '$name' with type '$type' is converted to 'ComplexF64'"
+                df[!, name] = parse.(ComplexF64, df[!, name])
+            catch
+                #do nothing
+            end
+        end
+    end
+
+    return df
 end
 
 function write(df::DataFrame, path = "")
@@ -157,6 +182,13 @@ function write(df::DataFrame, path = "")
         println(io, "# nrandom = $(_get_nrandom(df))")
         println(io, "# prefix = $(_get_prefix(df))")
         println(io, "# extension = $(_get_extension(df))")
+
+        # Write var types (needed for complex number for instance)
+        # types = string.(eltype.(eachcol(pf)))
+        # println(io, " types = $(join(types, ","))")
+
+        # Write var names
+        println(io, join(names(df), ",")) # needed because header of df disappear with
         CSV.write(io, df; append = true)
     end
 end
